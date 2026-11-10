@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="de-CH">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Mein Tram</title>
+<style>
+  :root {
+    --bg: #0B1F3A; --panel: #12294A; --line: #1E3A63; --text: #FFFFFF;
+    --muted: #9FB3CF; --accent: #FFD200; --red: #FF5A5A; --green: #3DDC84;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Helvetica Neue", Roboto, Arial, sans-serif; }
+  body { padding: 18px 16px 28px; min-height: 100vh; }
+  .hidden { display: none !important; }
+
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .clock { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .icon-btn { background: var(--panel); color: var(--text); border: 0; border-radius: 12px;
+    width: 44px; height: 44px; font-size: 22px; }
+
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+  .tab { background: var(--panel); color: var(--muted); border: 2px solid transparent; border-radius: 14px;
+    padding: 12px 8px; font-size: 16px; font-weight: 700; }
+  .tab.active { color: var(--bg); background: var(--accent); }
+
+  .route { color: var(--muted); font-size: 14px; margin: 0 2px 10px; }
+  .route b { color: var(--text); font-weight: 600; }
+
+  .hero { background: var(--panel); border-radius: 20px; padding: 18px; margin-bottom: 14px; }
+  .hero .top { display: flex; align-items: center; gap: 12px; }
+  .badge { min-width: 46px; height: 38px; padding: 0 10px; border-radius: 8px; background: #fff; color: var(--bg);
+    font-weight: 800; font-size: 20px; display: inline-flex; align-items: center; justify-content: center; }
+  .hero .dest { font-size: 17px; font-weight: 600; line-height: 1.2; }
+  .hero .mins { font-size: 64px; font-weight: 800; margin-top: 10px; line-height: 1;
+    font-variant-numeric: tabular-nums; }
+  .hero .mins small { font-size: 22px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+  .hero .meta { color: var(--muted); margin-top: 8px; font-size: 15px; }
+  .delay { color: var(--red); font-weight: 700; }
+  .ontime { color: var(--green); }
+
+  .list { background: var(--panel); border-radius: 16px; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 58px 1fr auto; align-items: center; gap: 10px;
+    padding: 12px 14px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .badge { height: 30px; min-width: 44px; font-size: 16px; }
+  .row .info { font-size: 14px; color: var(--muted); }
+  .row .info b { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .row .in { font-size: 22px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+  .row .in small { font-size: 13px; color: var(--muted); font-weight: 600; }
+
+  .status { text-align: center; color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .msg { background: var(--panel); border-radius: 16px; padding: 22px; text-align: center; color: var(--muted); }
+
+  /* Einstellungen */
+  h2 { margin: 4px 0 18px; font-size: 22px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  .field { position: relative; }
+  input[type=text] { width: 100%; font-size: 17px; padding: 14px; border-radius: 12px; border: 2px solid var(--line);
+    background: var(--panel); color: var(--text); outline: none; }
+  input[type=text]:focus { border-color: var(--accent); }
+  .sugg { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; background: #fff; color: #111;
+    border-radius: 0 0 12px 12px; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .sugg div { padding: 12px 14px; border-top: 1px solid #eee; font-size: 16px; }
+  .check { display: flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 16px; color: var(--text); }
+  .check input { width: 22px; height: 22px; accent-color: var(--accent); }
+  .row2 { display: flex; gap: 10px; align-items: center; margin-top: 14px; color: var(--muted); font-size: 15px; }
+  .row2 input { width: 70px; font-size: 17px; padding: 10px; border-radius: 10px; border: 2px solid var(--line);
+    background: var(--panel); color: var(--text); text-align: center; }
+  .primary { width: 100%; margin-top: 26px; padding: 16px; font-size: 18px; font-weight: 800; border: 0;
+    border-radius: 14px; background: var(--accent); color: var(--bg); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 18px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- Abfahrtstafel -->
+<section id="board" class="hidden">
+  <header>
+    <div class="clock" id="clock">--:--</div>
+    <button class="icon-btn" id="btnSettings" aria-label="Einstellungen">⚙</button>
+  </header>
+  <div class="tabs">
+    <button class="tab" data-dir="work">Zur Arbeit</button>
+    <button class="tab" data-dir="home">Nach Hause</button>
+  </div>
+  <div class="route" id="route"></div>
+  <div id="content"></div>
+  <div class="status" id="status"></div>
+</section>
+
+<!-- Einstellungen -->
+<section id="settings" class="hidden">
+  <h2>Meine Haltestellen</h2>
+  <label for="inHome">Zuhause (Haltestelle)</label>
+  <div class="field"><input type="text" id="inHome" placeholder="z.B. Zürich, Bucheggplatz" autocomplete="off"><div class="sugg hidden"></div></div>
+  <label for="inWork">Arbeit (Haltestelle)</label>
+  <div class="field"><input type="text" id="inWork" placeholder="z.B. Zürich, Paradeplatz" autocomplete="off"><div class="sugg hidden"></div></div>
+
+  <label class="check"><input type="checkbox" id="chkTram"> Nur Tram-Verbindungen</label>
+  <label class="check"><input type="checkbox" id="chkDirect"> Nur direkte Verbindungen (ohne Umsteigen)</label>
+  <div class="row2">Ab <input type="number" id="inSwitch" min="0" max="23"> Uhr automatisch „Nach Hause“ zeigen</div>
+  <div class="row2">Fussweg zur Haltestelle: <input type="number" id="inWalk" min="0" max="30"> Min.</div>
+
+  <button class="primary" id="btnSave">Speichern</button>
+  <p class="hint">Fahrplandaten: transport.opendata.ch (Schweizer ÖV inkl. ZVV, mit Echtzeit-Verspätungen).<br>
+  Mit Fussweg werden Verbindungen ausgeblendet, die du nicht mehr erreichst.</p>
+</section>
+
+<script>
+(function () {
+  "use strict";
+  var API = "https://transport.opendata.ch/v1/";
+  var KEY = "zvvTafel.settings.v1";
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------- Netzwerk (nativ in der App, fetch im Browser) ----------
+  var pending = {}, seq = 0;
+  window.__netDone = function (id, ok, body) {
+    var p = pending[id]; delete pending[id];
+    if (!p) return;
+    if (!ok) return p.reject(new Error(body || "Netzwerkfehler"));
+    try { p.resolve(JSON.parse(body)); } catch (e) { p.reject(e); }
+  };
+  function getJSON(url) {
+    if (window.AndroidNet) {
+      return new Promise(function (resolve, reject) {
+        var id = "r" + (++seq);
+        pending[id] = { resolve: resolve, reject: reject };
+        window.AndroidNet.get(id, url);
+      });
+    }
+    return fetch(url).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+  }
+
+  // ---------- Einstellungen ----------
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; }
+  }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  var cfg = load();
+
+  // ---------- Zustand ----------
+  var dir = null, data = [], lastUpdate = null, loading = false, error = null;
+
+  function autoDir() {
+    var h = new Date().getHours();
+    return h >= (cfg.switchHour != null ? cfg.switchHour : 13) || h < 3 ? "home" : "work";
+  }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function hhmm(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function shortName(n) { return String(n || "").replace(/^Zürich,\s*/, ""); }
+
+  // ---------- Verbindungen laden ----------
+  function refresh() {
+    if (!cfg || loading) return;
+    var from = dir === "work" ? cfg.home : cfg.work;
+    var to = dir === "work" ? cfg.work : cfg.home;
+    var url = API + "connections?limit=6&from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to);
+    if (cfg.tramOnly) url += "&transportations[]=tram";
+    if (cfg.direct) url += "&direct=1";
+    loading = true; renderStatus();
+    var forDir = dir;
+    getJSON(url).then(function (j) {
+      if (forDir !== dir) return;
+      data = (j.connections || []).map(parseConn).filter(Boolean);
+      error = null; lastUpdate = new Date();
+    }).catch(function (e) {
+      error = "Keine Verbindung zum Fahrplan – " + (e && e.message ? e.message : "Fehler");
+    }).then(function () { loading = false; render(); });
+  }
+
+  function parseConn(c) {
+    var f = c.from || {};
+    if (!f.departureTimestamp) return null;
+    var planned = new Date(f.departureTimestamp * 1000);
+    var delay = typeof f.delay === "number" ? f.delay : 0;
+    var real = new Date(planned.getTime() + delay * 60000);
+    if (f.prognosis && f.prognosis.departure) {
+      var p = Date.parse(String(f.prognosis.departure).replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
+      if (!isNaN(p)) real = new Date(p);
+    }
+    var leg = (c.sections || []).filter(function (s) { return s.journey; })[0];
+    var j = leg ? leg.journey : {};
+    var line = j.number || (c.products && c.products[0]) || "?";
+    var cat = j.category || "";
+    var arr = c.to && c.to.arrivalTimestamp ? new Date(c.to.arrivalTimestamp * 1000) : null;
+    var transfers = (c.sections || []).filter(function (s) { return s.journey; }).length - 1;
+    return {
+      line: String(line).replace(/^(T|B)\s+/, ""),
+      cat: cat, towards: j.to || "", planned: planned, real: real,
+      delay: Math.round((real - planned) / 60000), platform: f.platform || "",
+      arrival: arr, transfers: Math.max(0, transfers), cancelled: !!(j && j.cancelled)
+    };
+  }
+
+  // ---------- Darstellung ----------
+  function minutesUntil(d) { return Math.floor((d.getTime() - Date.now()) / 60000); }
+
+  function render() {
+    if (!cfg) return;
+    document.querySelectorAll(".tab").forEach(function (t) {
+      t.classList.toggle("active", t.getAttribute("data-dir") === dir);
+    });
+    var from = dir === "work" ? cfg.home : cfg.work, to = dir === "work" ? cfg.work : cfg.home;
+    $("route").innerHTML = "<b>" + esc(shortName(from)) + "</b> → <b>" + esc(shortName(to)) + "</b>";
+
+    var walk = cfg.walk || 0;
+    var list = data.filter(function (c) { return minutesUntil(c.real) >= walk && !c.cancelled; });
+    var html = "";
+    if (!list.length) {
+      html = '<div class="msg">' + (error ? esc(error) : (loading ? "Lade Abfahrten…" : "Keine passenden Verbindungen gefunden.")) + "</div>";
+    } else {
+      var n = list[0], m = minutesUntil(n.real);
+      html += '<div class="hero"><div class="top"><span class="badge">' + esc(n.line) + '</span>' +
+        '<div class="dest">Richtung ' + esc(shortName(n.towards)) + '</div></div>' +
+        '<div class="mins">' + (m <= 0 ? "jetzt" : m + "<small>Min.</small>") + "</div>" +
+        '<div class="meta">ab ' + hhmm(n.real) + delayHtml(n) +
+        (n.platform ? " · Kante " + esc(n.platform) : "") +
+        (n.arrival ? " · an " + hhmm(n.arrival) : "") +
+        (n.transfers ? " · " + n.transfers + "× umsteigen" : "") + "</div>" +
+        (walk ? '<div class="meta">Losgehen in ' + Math.max(0, m - walk) + " Min.</div>" : "") + "</div>";
+      if (list.length > 1) {
+        html += '<div class="list">' + list.slice(1, 6).map(function (c) {
+          var mm = minutesUntil(c.real);
+          return '<div class="row"><span class="badge">' + esc(c.line) + '</span>' +
+            '<div class="info"><b>' + hhmm(c.real) + "</b>" + delayHtml(c) +
+            (c.arrival ? " → " + hhmm(c.arrival) : "") + (c.transfers ? " · " + c.transfers + "×" : "") + "</div>" +
+            '<div class="in">' + mm + "<small> Min.</small></div></div>";
+        }).join("") + "</div>";
+      }
+    }
+    $("content").innerHTML = html;
+    renderStatus();
+  }
+  function delayHtml(c) {
+    if (c.delay > 0) return ' <span class="delay">+' + c.delay + "</span>";
+    return "";
+  }
+  function renderStatus() {
+    $("status").textContent = loading ? "Aktualisiere…" :
+      (lastUpdate ? "Stand " + hhmm(lastUpdate) + " · Tippen zum Aktualisieren" : "");
+  }
+
+  // ---------- Ansichten ----------
+  function showBoard() {
+    $("settings").classList.add("hidden"); $("board").classList.remove("hidden");
+    if (!dir) dir = autoDir();
+    data = []; render(); refresh();
+  }
+  function showSettings() {
+    var c = cfg || {};
+    $("inHome").value = c.home || ""; $("inWork").value = c.work || "";
+    $("chkTram").checked = !!c.tramOnly; $("chkDirect").checked = !!c.direct;
+    $("inSwitch").value = c.switchHour != null ? c.switchHour : 13;
+    $("inWalk").value = c.walk || 0;
+    $("board").classList.add("hidden"); $("settings").classList.remove("hidden");
+  }
+
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      dir = t.getAttribute("data-dir"); data = []; error = null; render(); refresh();
+    });
+  });
+  $("btnSettings").addEventListener("click", showSettings);
+  $("status").addEventListener("click", refresh);
+  $("content").addEventListener("click", refresh);
+  $("btnSave").addEventListener("click", function () {
+    var home = $("inHome").value.trim(), work = $("inWork").value.trim();
+    if (!home || !work) { alertBox("Bitte beide Haltestellen eingeben."); return; }
+    cfg = {
+      home: home, work: work, tramOnly: $("chkTram").checked, direct: $("chkDirect").checked,
+      switchHour: Math.min(23, Math.max(0, parseInt($("inSwitch").value, 10) || 13)),
+      walk: Math.min(30, Math.max(0, parseInt($("inWalk").value, 10) || 0))
+    };
+    save(cfg); dir = autoDir(); showBoard();
+  });
+  function alertBox(t) { var h = document.querySelector(".hint"); h.textContent = t; h.style.color = "#FF5A5A"; }
+
+  // Haltestellen-Vorschläge
+  document.querySelectorAll(".field").forEach(function (f) {
+    var input = f.querySelector("input"), box = f.querySelector(".sugg"), timer = null;
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (q.length < 2) { box.classList.add("hidden"); return; }
+      timer = setTimeout(function () {
+        getJSON(API + "locations?type=station&query=" + encodeURIComponent(q)).then(function (j) {
+          var st = (j.stations || []).filter(function (s) { return s.name; }).slice(0, 6);
+          box.innerHTML = st.map(function (s) { return "<div>" + esc(s.name) + "</div>"; }).join("");
+          box.classList.toggle("hidden", !st.length);
+          box.querySelectorAll("div").forEach(function (d) {
+            d.addEventListener("click", function () { input.value = d.textContent; box.classList.add("hidden"); });
+          });
+        }).catch(function () {});
+      }, 300);
+    });
+    input.addEventListener("blur", function () { setTimeout(function () { box.classList.add("hidden"); }, 200); });
+  });
+
+  // Hooks für die Android-App
+  window.onAppResume = function () {
+    if (cfg && !$("board").classList.contains("hidden")) { dir = autoDir(); data = []; render(); refresh(); }
+  };
+  window.onBack = function () {
+    if (cfg && !$("settings").classList.contains("hidden")) { showBoard(); return true; }
+    return false;
+  };
+
+  // Uhr & Timer
+  setInterval(function () {
+    $("clock").textContent = hhmm(new Date());
+    if (cfg && !$("board").classList.contains("hidden")) render();
+  }, 10000);
+  setInterval(refresh, 30000);
+  $("clock").textContent = hhmm(new Date());
+
+  if (cfg) showBoard(); else showSettings();
+})();
+</script>
+</body>
+</html>
