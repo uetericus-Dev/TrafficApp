@@ -29,7 +29,8 @@
   .route b { color: var(--text); font-weight: 600; }
 
   .hero { background: var(--panel); border-radius: 20px; padding: 18px; margin-bottom: 14px; }
-  .hero .top { display: flex; align-items: center; gap: 12px; }
+  .hero .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .hero .top .badge.sm { height: 38px; min-width: 46px; font-size: 20px; }
   .badge { min-width: 46px; height: 38px; padding: 0 10px; border-radius: 8px; background: #fff; color: var(--bg);
     font-weight: 800; font-size: 20px; display: inline-flex; align-items: center; justify-content: center; }
   .hero .dest { font-size: 17px; font-weight: 600; line-height: 1.2; }
@@ -41,10 +42,36 @@
   .ontime { color: var(--green); }
 
   .list { background: var(--panel); border-radius: 16px; overflow: hidden; }
-  .row { display: grid; grid-template-columns: 58px 1fr auto; align-items: center; gap: 10px;
-    padding: 12px 14px; border-top: 1px solid var(--line); }
+  .row { padding: 12px 14px; border-top: 1px solid var(--line); }
   .row:first-child { border-top: 0; }
-  .row .badge { height: 30px; min-width: 44px; font-size: 16px; }
+  .rowmain { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
+  .chain { display: flex; align-items: center; }
+  .btns { display: flex; gap: 8px; }
+  .badge.sm { height: 30px; min-width: 40px; font-size: 16px; padding: 0 8px; }
+  .badge.train { background: #2D6CDF; color: #fff; }
+  .chev { color: var(--muted); margin: 0 4px; font-size: 18px; }
+  .delay.big { background: var(--red); color: #fff; border-radius: 6px; padding: 0 5px; }
+  s.planned { color: var(--muted); font-weight: 400; font-size: .85em; }
+  .muted { color: var(--muted); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .pill { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 20px; }
+  .pill.green { background: rgba(61,220,132,.15); color: var(--green); }
+  .pill.orange { background: rgba(255,170,0,.18); color: #FFB020; }
+  .pill.red { background: rgba(255,90,90,.18); color: var(--red); }
+  .more { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  .legs { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .leg { margin: 8px 0; }
+  .leghead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .leghead .badge { height: 28px; min-width: 38px; font-size: 15px; }
+  .dir { font-size: 14px; font-weight: 600; }
+  .stop { position: relative; padding-left: 22px; font-size: 14px; color: var(--text); margin: 4px 0; line-height: 1.4; }
+  .stop b { font-variant-numeric: tabular-nums; }
+  .dot { position: absolute; left: 4px; top: 5px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); }
+  .dot.end { background: var(--accent); }
+  .change { font-size: 13px; color: var(--accent); background: rgba(255,210,0,.08); border-radius: 10px;
+    padding: 8px 10px; margin: 8px 0; }
+  .change.bad { color: var(--red); background: rgba(255,90,90,.12); }
+  .change.walk { color: var(--muted); background: transparent; padding: 2px 10px; }
   .row .info { font-size: 14px; color: var(--muted); }
   .row .info b { color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
   .row .in { font-size: 22px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
@@ -79,7 +106,10 @@
 <section id="board" class="hidden">
   <header>
     <div class="clock" id="clock">--:--</div>
-    <button class="icon-btn" id="btnSettings" aria-label="Einstellungen">⚙</button>
+    <div class="btns">
+      <button class="icon-btn" id="btnRefresh" aria-label="Aktualisieren">⟳</button>
+      <button class="icon-btn" id="btnSettings" aria-label="Einstellungen">⚙</button>
+    </div>
   </header>
   <div class="tabs">
     <button class="tab" data-dir="work">Zur Arbeit</button>
@@ -155,6 +185,8 @@
   function shortName(n) { return String(n || "").replace(/^Zürich,\s*/, ""); }
 
   // ---------- Verbindungen laden ----------
+  var open = {};   // aufgeklappte Verbindungen (Schlüssel -> true)
+
   function refresh() {
     if (!cfg || loading) return;
     var from = dir === "work" ? cfg.home : cfg.work;
@@ -173,32 +205,161 @@
     }).then(function () { loading = false; render(); });
   }
 
-  function parseConn(c) {
-    var f = c.from || {};
-    if (!f.departureTimestamp) return null;
-    var planned = new Date(f.departureTimestamp * 1000);
-    var delay = typeof f.delay === "number" ? f.delay : 0;
-    var real = new Date(planned.getTime() + delay * 60000);
-    if (f.prognosis && f.prognosis.departure) {
-      var p = Date.parse(String(f.prognosis.departure).replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
-      if (!isNaN(p)) real = new Date(p);
-    }
-    var leg = (c.sections || []).filter(function (s) { return s.journey; })[0];
-    var j = leg ? leg.journey : {};
-    var line = j.number || (c.products && c.products[0]) || "?";
-    var cat = j.category || "";
-    var arr = c.to && c.to.arrivalTimestamp ? new Date(c.to.arrivalTimestamp * 1000) : null;
-    var transfers = (c.sections || []).filter(function (s) { return s.journey; }).length - 1;
+  var TRAIN = { S: 1, SN: 1, R: 1, RE: 1, IR: 1, IC: 1, ICE: 1, EC: 1, EN: 1, TGV: 1 };
+
+  function parseTime(str) {
+    if (!str) return null;
+    var t = Date.parse(String(str).replace(/([+-]\d\d)(\d\d)$/, "$1:$2"));
+    return isNaN(t) ? null : new Date(t);
+  }
+
+  /** Zeitpunkt einer Haltestelle: Plan, Echtzeit, Verspätung, Kante (inkl. Gleisänderung) */
+  function stopInfo(s, kind) {
+    if (!s) return null;
+    var ts = s[kind + "Timestamp"];
+    var planned = ts ? new Date(ts * 1000) : parseTime(s[kind]);
+    if (!planned) return null;
+    var prog = s.prognosis || {};
+    var real = parseTime(prog[kind]);
+    var live = !!real || typeof s.delay === "number";
+    if (!real) real = new Date(planned.getTime() + (typeof s.delay === "number" ? s.delay : 0) * 60000);
+    var plat = s.platform || "", newPlat = prog.platform || "";
     return {
-      line: String(line).replace(/^(T|B)\s+/, ""),
-      cat: cat, towards: j.to || "", planned: planned, real: real,
-      delay: Math.round((real - planned) / 60000), platform: f.platform || "",
-      arrival: arr, transfers: Math.max(0, transfers), cancelled: !!(j && j.cancelled)
+      planned: planned, real: real, live: live,
+      delay: Math.round((real - planned) / 60000),
+      platform: newPlat || plat, platformChanged: !!(newPlat && plat && newPlat !== plat),
+      station: s.station && s.station.name ? s.station.name : ""
+    };
+  }
+
+  function lineLabel(j, product) {
+    var cat = j.category || "", n = String(j.number || "");
+    if (n.length > 4 && product) return String(product).replace(/\s+/g, "");
+    if (TRAIN[cat] && n.indexOf(cat) !== 0) return cat + n;
+    return n || cat || "?";
+  }
+
+  function parseConn(c) {
+    var dep = stopInfo(c.from, "departure");
+    if (!dep) return null;
+    var arr = stopInfo(c.to, "arrival");
+    var legs = [], rideIdx = 0, cancelled = false;
+    (c.sections || []).forEach(function (s) {
+      if (s.journey) {
+        var j = s.journey;
+        if (j.cancelled) cancelled = true;
+        legs.push({
+          type: "ride", line: lineLabel(j, c.products && c.products[rideIdx]),
+          train: !!TRAIN[j.category], towards: j.to || "",
+          dep: stopInfo(s.departure, "departure"), arr: stopInfo(s.arrival, "arrival")
+        });
+        rideIdx++;
+      } else if (s.walk || (s.departure && s.arrival)) {
+        var a = s.departure && s.departure.departureTimestamp, b = s.arrival && s.arrival.arrivalTimestamp;
+        var mins = a && b ? Math.round((b - a) / 60) : null;
+        if (mins == null && s.walk && s.walk.duration != null) {
+          var d = s.walk.duration;
+          mins = typeof d === "number" ? (d > 100 ? Math.round(d / 60) : d)
+               : (function (p) { return p.length === 3 ? (+p[0]) * 60 + (+p[1]) : +p[0]; })(String(d).split(":"));
+        }
+        legs.push({ type: "walk", minutes: mins || 0,
+          from: s.departure && s.departure.station ? s.departure.station.name : "",
+          to: s.arrival && s.arrival.station ? s.arrival.station.name : "" });
+      }
+    });
+    var rides = legs.filter(function (l) { return l.type === "ride"; });
+    // Fussweg zwischen zwei Fahrten der folgenden Fahrt zuordnen
+    var walkBefore = 0;
+    legs.forEach(function (l) {
+      if (l.type === "walk") { walkBefore += l.minutes; }
+      else { if (rides.indexOf(l) > 0) { l.walk = walkBefore; } walkBefore = 0; }
+    });
+    // Umsteigezeiten (mit Echtzeit, abzüglich Fussweg) berechnen
+    var tight = false, missed = false;
+    for (var i = 1; i < rides.length; i++) {
+      var prev = rides[i - 1], next = rides[i], w = next.walk || 0;
+      if (prev.arr && next.dep) {
+        next.change = Math.round((next.dep.real - prev.arr.real) / 60000) - w;
+        next.changePlanned = Math.round((next.dep.planned - prev.arr.planned) / 60000) - w;
+        next.changeAt = prev.arr.station;
+        next.changeTo = next.dep.station;
+        if (next.change < 2) { next.tight = true; tight = true; }
+        if (next.change < 0) missed = true;
+      }
+    }
+    var first = rides[0] || { line: "?", towards: "" };
+    return {
+      key: dep.planned.getTime() + "|" + rides.map(function (r) { return r.line; }).join(">"),
+      dep: dep, arr: arr, real: dep.real, legs: legs, rides: rides,
+      line: first.line, train: first.train, towards: first.towards,
+      transfers: Math.max(0, rides.length - 1), tight: tight, missed: missed, cancelled: cancelled
     };
   }
 
   // ---------- Darstellung ----------
   function minutesUntil(d) { return Math.floor((d.getTime() - Date.now()) / 60000); }
+
+  function badge(l, small) {
+    return '<span class="badge' + (l.train ? " train" : "") + (small ? " sm" : "") + '">' + esc(l.line) + "</span>";
+  }
+  function chain(c) {
+    return c.rides.map(function (r) { return badge(r, true); }).join('<span class="chev">›</span>');
+  }
+  function delayTag(t) {
+    if (!t) return "";
+    if (t.delay > 0) return ' <span class="delay' + (t.delay >= 5 ? " big" : "") + '">+' + t.delay + "</span>";
+    if (t.delay < 0) return ' <span class="ontime">' + t.delay + "</span>";
+    return "";
+  }
+  function timeHtml(t) {
+    if (!t) return "";
+    if (t.delay !== 0) return '<s class="planned">' + hhmm(t.planned) + "</s> <b>" + hhmm(t.real) + "</b>" + delayTag(t);
+    return "<b>" + hhmm(t.real) + "</b>";
+  }
+  function platHtml(t) {
+    if (!t || !t.platform) return "";
+    return t.platformChanged ? ' · <span class="delay">Kante ' + esc(t.platform) + " (geändert)</span>"
+                             : " · Kante " + esc(t.platform);
+  }
+  function statusLine(c) {
+    var parts = [];
+    if (c.cancelled) parts.push('<span class="pill red">Fällt aus</span>');
+    else if (c.dep.delay >= 5) parts.push('<span class="pill red">' + c.dep.delay + " Min. verspätet</span>");
+    else if (c.dep.delay > 0) parts.push('<span class="pill orange">+' + c.dep.delay + " Min.</span>");
+    else if (c.dep.live) parts.push('<span class="pill green">pünktlich</span>');
+    if (c.tight) parts.push('<span class="pill red">' + (c.missed ? "Anschluss gefährdet" : "Anschluss knapp") + "</span>");
+    if (c.arr && c.arr.delay > 0) parts.push('<span class="pill orange">Ankunft +' + c.arr.delay + "</span>");
+    return parts.length ? '<div class="pills">' + parts.join("") + "</div>" : "";
+  }
+
+  function details(c) {
+    var h = '<div class="legs">';
+    c.legs.forEach(function (l, idx) {
+      var between = idx > 0 && idx < c.legs.length - 1 && c.legs.slice(0, idx).some(function (x) { return x.type === "ride"; })
+        && c.legs.slice(idx).some(function (x) { return x.type === "ride"; });
+      if (l.type === "walk") {
+        if (between) return;   // wird im Umsteige-Hinweis angezeigt
+        if (l.minutes > 0) h += '<div class="change walk">🚶 ' + l.minutes + " Min. Fussweg" +
+          (l.to ? " zu " + esc(shortName(l.to)) : "") + "</div>";
+        return;
+      }
+      if (l.change != null) {
+        var same = shortName(l.changeAt) === shortName(l.changeTo);
+        h += '<div class="change' + (l.tight ? " bad" : "") + '">↻ Umsteigen in <b>' + esc(shortName(l.changeAt)) + "</b>" +
+          (same ? "" : " → " + esc(shortName(l.changeTo))) + " · " +
+          (l.walk ? "🚶 " + l.walk + " Min. Fussweg · " : "") +
+          (l.change < 0 ? "Anschluss verpasst" : l.change + " Min. Reserve") +
+          (l.change !== l.changePlanned ? " (geplant " + l.changePlanned + ")" : "") + "</div>";
+      }
+      h += '<div class="leg">' +
+        '<div class="leghead">' + badge(l) + '<span class="dir">Richtung ' + esc(shortName(l.towards)) + "</span></div>" +
+        '<div class="stop"><span class="dot"></span>' + timeHtml(l.dep) + " " + esc(shortName(l.dep && l.dep.station)) +
+          '<span class="muted">' + platHtml(l.dep) + "</span></div>" +
+        '<div class="stop"><span class="dot end"></span>' + timeHtml(l.arr) + " " + esc(shortName(l.arr && l.arr.station)) +
+          '<span class="muted">' + platHtml(l.arr) + "</span></div></div>";
+    });
+    return h + "</div>";
+  }
 
   function render() {
     if (!cfg) return;
@@ -209,40 +370,40 @@
     $("route").innerHTML = "<b>" + esc(shortName(from)) + "</b> → <b>" + esc(shortName(to)) + "</b>";
 
     var walk = cfg.walk || 0;
-    var list = data.filter(function (c) { return minutesUntil(c.real) >= walk && !c.cancelled; });
+    var list = data.filter(function (c) { return minutesUntil(c.real) >= walk; });
     var html = "";
     if (!list.length) {
       html = '<div class="msg">' + (error ? esc(error) : (loading ? "Lade Abfahrten…" : "Keine passenden Verbindungen gefunden.")) + "</div>";
     } else {
       var n = list[0], m = minutesUntil(n.real);
-      html += '<div class="hero"><div class="top"><span class="badge">' + esc(n.line) + '</span>' +
-        '<div class="dest">Richtung ' + esc(shortName(n.towards)) + '</div></div>' +
-        '<div class="mins">' + (m <= 0 ? "jetzt" : m + "<small>Min.</small>") + "</div>" +
-        '<div class="meta">ab ' + hhmm(n.real) + delayHtml(n) +
-        (n.platform ? " · Kante " + esc(n.platform) : "") +
-        (n.arrival ? " · an " + hhmm(n.arrival) : "") +
-        (n.transfers ? " · " + n.transfers + "× umsteigen" : "") + "</div>" +
-        (walk ? '<div class="meta">Losgehen in ' + Math.max(0, m - walk) + " Min.</div>" : "") + "</div>";
+      html += '<div class="hero conn" data-key="' + esc(n.key) + '"><div class="top">' + chain(n) +
+        '<div class="dest">Richtung ' + esc(shortName(n.towards)) + "</div></div>" +
+        '<div class="mins">' + (n.cancelled ? "–" : (m <= 0 ? "jetzt" : m + "<small>Min.</small>")) + "</div>" +
+        statusLine(n) +
+        '<div class="meta">ab ' + timeHtml(n.dep) + platHtml(n.dep) +
+        (n.arr ? " · an " + timeHtml(n.arr) : "") + "</div>" +
+        '<div class="meta">' + (n.transfers ? n.transfers + "× umsteigen" : "direkt") +
+        (walk ? " · Losgehen in " + Math.max(0, m - walk) + " Min." : "") + "</div>" +
+        (open[n.key] ? details(n) : '<div class="more">Details anzeigen ▾</div>') + "</div>";
       if (list.length > 1) {
         html += '<div class="list">' + list.slice(1, 6).map(function (c) {
           var mm = minutesUntil(c.real);
-          return '<div class="row"><span class="badge">' + esc(c.line) + '</span>' +
-            '<div class="info"><b>' + hhmm(c.real) + "</b>" + delayHtml(c) +
-            (c.arrival ? " → " + hhmm(c.arrival) : "") + (c.transfers ? " · " + c.transfers + "×" : "") + "</div>" +
-            '<div class="in">' + mm + "<small> Min.</small></div></div>";
+          var warn = c.cancelled ? ' <span class="delay">fällt aus</span>' : (c.tight ? ' <span class="delay">' + (c.missed ? "Anschluss gefährdet" : "knapp") + "</span>" : "");
+          return '<div class="row conn" data-key="' + esc(c.key) + '"><div class="rowmain">' +
+            '<div class="chain">' + chain(c) + "</div>" +
+            '<div class="info">' + timeHtml(c.dep) + (c.arr ? " → " + hhmm(c.arr.real) + delayTag(c.arr) : "") +
+            (c.transfers ? " · " + c.transfers + "×" : "") + warn + "</div>" +
+            '<div class="in">' + mm + "<small> Min.</small></div></div>" +
+            (open[c.key] ? details(c) : "") + "</div>";
         }).join("") + "</div>";
       }
     }
     $("content").innerHTML = html;
     renderStatus();
   }
-  function delayHtml(c) {
-    if (c.delay > 0) return ' <span class="delay">+' + c.delay + "</span>";
-    return "";
-  }
   function renderStatus() {
     $("status").textContent = loading ? "Aktualisiere…" :
-      (lastUpdate ? "Stand " + hhmm(lastUpdate) + " · Tippen zum Aktualisieren" : "");
+      (lastUpdate ? "Stand " + hhmm(lastUpdate) + " · Verbindung antippen für Details" : "");
   }
 
   // ---------- Ansichten ----------
@@ -266,8 +427,15 @@
     });
   });
   $("btnSettings").addEventListener("click", showSettings);
+  $("btnRefresh").addEventListener("click", refresh);
   $("status").addEventListener("click", refresh);
-  $("content").addEventListener("click", refresh);
+  $("content").addEventListener("click", function (e) {
+    var el = e.target.closest ? e.target.closest(".conn") : null;
+    if (!el) { refresh(); return; }
+    var k = el.getAttribute("data-key");
+    if (open[k]) delete open[k]; else open[k] = true;
+    render();
+  });
   $("btnSave").addEventListener("click", function () {
     var home = $("inHome").value.trim(), work = $("inWork").value.trim();
     if (!home || !work) { alertBox("Bitte beide Haltestellen eingeben."); return; }

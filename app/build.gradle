@@ -7,11 +7,20 @@ android {
         applicationId 'ch.zvv.tafel'
         minSdk 24
         targetSdk 35
-        versionCode 1
-        versionName '1.0'
+        versionCode 3
+        versionName '1.2'
+    }
+    signingConfigs {
+        fest {
+            storeFile file('meintram.keystore')
+            storePassword 'meintram'
+            keyAlias 'meintram'
+            keyPassword 'meintram'
+        }
     }
     buildTypes {
-        release { minifyEnabled false }
+        debug { signingConfig signingConfigs.fest }
+        release { minifyEnabled false; signingConfig signingConfigs.fest }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
