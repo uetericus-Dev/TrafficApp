@@ -1,6 +1,8 @@
 package ch.zvv.tafel;
 
 import android.app.Activity;
+import android.graphics.Insets;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -8,6 +10,9 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.widget.FrameLayout;
 
 import org.json.JSONObject;
 
@@ -33,7 +38,23 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);   // Haltestellen-Einstellungen speichern
         web.setWebViewClient(new WebViewClient());
         web.addJavascriptInterface(new Bridge(), "AndroidNet");
-        setContentView(web);
+        web.setBackgroundColor(0xFF0B1F3A);
+
+        // Abstand zu Statusleiste, Kamera-Aussparung, Navigationsleiste und Tastatur
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF0B1F3A);
+        root.addView(web, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (Build.VERSION.SDK_INT >= 35) {
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                Insets bars = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+                return WindowInsets.CONSUMED;
+            });
+        }
+        setContentView(root);
         web.loadUrl("file:///android_asset/index.html");
     }
 
