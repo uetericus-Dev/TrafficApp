@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
                 boolean ok;
                 try {
                     HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-                    c.setConnectTimeout(10000);
+                    c.setConnectTimeout(6000);
                     c.setReadTimeout(15000);
                     c.setRequestProperty("Accept", "application/json");
                     int code = c.getResponseCode();

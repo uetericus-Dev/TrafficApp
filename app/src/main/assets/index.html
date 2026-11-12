@@ -33,7 +33,7 @@
   .hero .top .badge.sm { height: 38px; min-width: 46px; font-size: 20px; }
   .badge { min-width: 46px; height: 38px; padding: 0 10px; border-radius: 8px; background: #fff; color: var(--bg);
     font-weight: 800; font-size: 20px; display: inline-flex; align-items: center; justify-content: center; }
-  .hero .dest { font-size: 17px; font-weight: 600; line-height: 1.2; }
+  .hero .dest { font-size: 17px; font-weight: 600; line-height: 1.2; flex: 1 1 150px; }
   .hero .mins { font-size: 64px; font-weight: 800; margin-top: 10px; line-height: 1;
     font-variant-numeric: tabular-nums; }
   .hero .mins small { font-size: 22px; font-weight: 600; color: var(--muted); margin-left: 6px; }
@@ -44,6 +44,8 @@
   .list { background: var(--panel); border-radius: 16px; overflow: hidden; }
   .row { padding: 12px 14px; border-top: 1px solid var(--line); }
   .row:first-child { border-top: 0; }
+  .list.rush { margin-bottom: 14px; opacity: .6; background: transparent; border: 1px dashed var(--line); }
+  .hurry { color: #FFB020; font-size: 13px; font-weight: 600; }
   .rowmain { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; }
   .chain { display: flex; align-items: center; }
   .btns { display: flex; gap: 8px; }
@@ -134,7 +136,7 @@
   <div class="row2">Fussweg zur Haltestelle: <input type="number" id="inWalk" min="0" max="30"> Min.</div>
 
   <button class="primary" id="btnSave">Speichern</button>
-  <p class="hint">Fahrplandaten: transport.opendata.ch (Schweizer ÖV inkl. ZVV, mit Echtzeit-Verspätungen).<br>
+  <p class="hint">Fahrplandaten: transport.opendata.ch (Schweizer ÖV inkl. ZVV, mit Echtzeit-Verspätungen), bei Ausfall automatisch search.ch.<br>
   Mit Fussweg werden Verbindungen ausgeblendet, die du nicht mehr erreichst.</p>
 </section>
 
@@ -186,23 +188,94 @@
 
   // ---------- Verbindungen laden ----------
   var open = {};   // aufgeklappte Verbindungen (Schlüssel -> true)
+  var SEARCH = "https://search.ch/timetable/api/";
+  var source = "opendata";      // aktuell bevorzugte Quelle
+  var preferUntil = 0;          // bis wann die Ersatzquelle bevorzugt wird
+
+  function fromOpendata(from, to) {
+    var url = API + "connections?limit=6&from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to);
+    if (cfg.tramOnly) url += "&transportations[]=tram";
+    if (cfg.direct) url += "&direct=1";
+    return getJSON(url).then(function (j) {
+      if (!j || !j.connections) throw new Error("Ungültige Antwort");
+      return j.connections;
+    });
+  }
+
+  // search.ch-Format in das opendata-Format umwandeln
+  function scTs(s) {
+    if (!s) return null;
+    var d = new Date(String(s).replace(" ", "T"));
+    return isNaN(d) ? null : Math.round(d.getTime() / 1000);
+  }
+  function scDelay(v) { var n = parseInt(String(v || "").replace("+", ""), 10); return isNaN(n) ? 0 : n; }
+  var SC_CAT = { tram: "T", bus: "B", night_bus: "B", post: "B", strain: "S", ship: "BAT", cablecar: "LB", funicular: "FUN" };
+  function fromSearch(from, to) {
+    var url = SEARCH + "route.json?num=6&from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to);
+    if (cfg.tramOnly) url += "&transportation_types=tram";
+    return getJSON(url).then(function (j) {
+      if (!j || !j.connections) throw new Error((j && j.messages && j.messages.join(" ")) || "Ungültige Antwort");
+      return j.connections.map(function (c) {
+        var legs = (c.legs || []).filter(function (l) { return l.exit; });
+        var sections = legs.map(function (l) {
+          var dep = { station: { name: l.name }, departureTimestamp: scTs(l.departure), delay: scDelay(l.dep_delay),
+                      platform: l.track || "", prognosis: {} };
+          var arr = { station: { name: l.exit.name }, arrivalTimestamp: scTs(l.exit.arrival), delay: scDelay(l.exit.arr_delay),
+                      platform: l.exit.track || "", prognosis: {} };
+          if (l.type === "walk") return { walk: { duration: l.runningtime || null }, departure: dep, arrival: arr };
+          return { journey: { number: l.line || l["*L"] || "", category: l["*G"] || SC_CAT[l.type] || "",
+                              to: l.terminal || "", cancelled: l.dep_delay === "X" },
+                   departure: dep, arrival: arr };
+        });
+        var rides = sections.filter(function (s) { return s.journey; });
+        var first = rides[0] || sections[0] || {}, last = sections[sections.length - 1] || {};
+        return {
+          from: first.departure || { departureTimestamp: scTs(c.departure) },
+          to: last.arrival || { arrivalTimestamp: scTs(c.arrival) },
+          sections: sections, products: []
+        };
+      }).filter(function (c) {
+        return !cfg.direct || c.sections.filter(function (s) { return s.journey; }).length <= 1;
+      });
+    });
+  }
+
+  function loadConnections(from, to) {
+    var useSearch = Date.now() < preferUntil;
+    var a = useSearch ? fromSearch : fromOpendata, b = useSearch ? fromOpendata : fromSearch;
+    return a(from, to).then(function (r) { source = useSearch ? "search.ch" : "opendata"; return r; })
+      .catch(function (e1) {
+        return b(from, to).then(function (r) {
+          source = useSearch ? "opendata" : "search.ch";
+          preferUntil = source === "search.ch" ? Date.now() + 10 * 60000 : 0;  // 10 Min. bei Ersatzquelle bleiben
+          return r;
+        }).catch(function () { throw e1; });
+      });
+  }
 
   function refresh() {
     if (!cfg || loading) return;
     var from = dir === "work" ? cfg.home : cfg.work;
     var to = dir === "work" ? cfg.work : cfg.home;
-    var url = API + "connections?limit=6&from=" + encodeURIComponent(from) + "&to=" + encodeURIComponent(to);
-    if (cfg.tramOnly) url += "&transportations[]=tram";
-    if (cfg.direct) url += "&direct=1";
     loading = true; renderStatus();
     var forDir = dir;
-    getJSON(url).then(function (j) {
+    loadConnections(from, to).then(function (conns) {
       if (forDir !== dir) return;
-      data = (j.connections || []).map(parseConn).filter(Boolean);
+      data = conns.map(parseConn).filter(Boolean);
       error = null; lastUpdate = new Date();
     }).catch(function (e) {
-      error = "Keine Verbindung zum Fahrplan – " + (e && e.message ? e.message : "Fehler");
+      error = "Keine Verbindung zum Fahrplan. Bitte Internet prüfen und ⟳ tippen. (" + (e && e.message ? e.message : "Fehler") + ")";
     }).then(function () { loading = false; render(); });
+  }
+
+  function searchStations(q) {
+    return getJSON(API + "locations?type=station&query=" + encodeURIComponent(q)).then(function (j) {
+      return (j.stations || []).map(function (s) { return s.name; }).filter(Boolean);
+    }).catch(function () {
+      return getJSON(SEARCH + "completion.json?term=" + encodeURIComponent(q)).then(function (j) {
+        return (Array.isArray(j) ? j : []).map(function (s) { return s.label; }).filter(Boolean);
+      });
+    });
   }
 
   var TRAIN = { S: 1, SN: 1, R: 1, RE: 1, IR: 1, IC: 1, ICE: 1, EC: 1, EN: 1, TGV: 1 };
@@ -371,7 +444,20 @@
 
     var walk = cfg.walk || 0;
     var list = data.filter(function (c) { return minutesUntil(c.real) >= walk; });
+    // Verbindungen, die man nur mit Eile noch erwischt (weniger Zeit als Fussweg)
+    var rush = walk ? data.filter(function (c) { var mm = minutesUntil(c.real); return mm >= 0 && mm < walk; }) : [];
     var html = "";
+    if (rush.length) {
+      html += '<div class="list rush">' + rush.map(function (c) {
+        var mm = minutesUntil(c.real);
+        return '<div class="row conn" data-key="' + esc(c.key) + '"><div class="rowmain">' +
+          '<div class="chain">' + chain(c) + "</div>" +
+          '<div class="info">' + timeHtml(c.dep) + (c.arr ? " → " + hhmm(c.arr.real) + delayTag(c.arr) : "") +
+          '<br><span class="hurry">🏃 nur mit Eile erreichbar</span></div>' +
+          '<div class="in">' + (mm <= 0 ? "jetzt" : mm + "<small> Min.</small>") + "</div></div>" +
+          (open[c.key] ? details(c) : "") + "</div>";
+      }).join("") + "</div>";
+    }
     if (!list.length) {
       html = '<div class="msg">' + (error ? esc(error) : (loading ? "Lade Abfahrten…" : "Keine passenden Verbindungen gefunden.")) + "</div>";
     } else {
@@ -403,7 +489,9 @@
   }
   function renderStatus() {
     $("status").textContent = loading ? "Aktualisiere…" :
-      (lastUpdate ? "Stand " + hhmm(lastUpdate) + " · Verbindung antippen für Details" : "");
+      (error && data.length) ? "⚠ Offline – Stand " + (lastUpdate ? hhmm(lastUpdate) : "?") + " · ⟳ zum erneuten Versuch" :
+      (lastUpdate ? "Stand " + hhmm(lastUpdate) + (source === "search.ch" ? " · Ersatzquelle search.ch" : "") +
+        " · Verbindung antippen für Details" : "");
   }
 
   // ---------- Ansichten ----------
@@ -456,9 +544,9 @@
       var q = input.value.trim();
       if (q.length < 2) { box.classList.add("hidden"); return; }
       timer = setTimeout(function () {
-        getJSON(API + "locations?type=station&query=" + encodeURIComponent(q)).then(function (j) {
-          var st = (j.stations || []).filter(function (s) { return s.name; }).slice(0, 6);
-          box.innerHTML = st.map(function (s) { return "<div>" + esc(s.name) + "</div>"; }).join("");
+        searchStations(q).then(function (names) {
+          var st = names.slice(0, 6);
+          box.innerHTML = st.map(function (n) { return "<div>" + esc(n) + "</div>"; }).join("");
           box.classList.toggle("hidden", !st.length);
           box.querySelectorAll("div").forEach(function (d) {
             d.addEventListener("click", function () { input.value = d.textContent; box.classList.add("hidden"); });
@@ -471,7 +559,11 @@
 
   // Hooks für die Android-App
   window.onAppResume = function () {
-    if (cfg && !$("board").classList.contains("hidden")) { dir = autoDir(); data = []; render(); refresh(); }
+    if (cfg && !$("board").classList.contains("hidden")) {
+      var nd = autoDir();
+      if (nd !== dir) { dir = nd; data = []; }   // alte Abfahrten behalten, falls Netz kurz weg
+      render(); refresh();
+    }
   };
   window.onBack = function () {
     if (cfg && !$("settings").classList.contains("hidden")) { showBoard(); return true; }
